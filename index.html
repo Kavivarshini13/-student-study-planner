@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>StudyAlpha AI – Student Study Planner</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+*{box-sizing:border-box;font-family:'Poppins',sans-serif}
+body{margin:0;background:#f4f6f8;color:#1f2937}
+
+.sidebar{
+  width:220px;height:100vh;position:fixed;
+  background:#1e3a8a;color:#fff;padding:20px
+}
+.sidebar h2{margin-bottom:20px}
+.sidebar button{
+  width:100%;margin-bottom:10px;padding:12px;
+  background:#3b82f6;color:#fff;border:none;
+  border-radius:10px;cursor:pointer;font-size:14px
+}
+.sidebar button:hover{background:#2563eb}
+
+.content{margin-left:240px;padding:30px}
+
+.card{
+  background:#fff;padding:25px;border-radius:16px;
+  margin-bottom:25px;box-shadow:0 10px 25px rgba(0,0,0,.08)
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:20px
+}
+
+.stat{background:#f8fafc;padding:20px;border-radius:14px}
+
+button.action{
+  padding:10px 18px;background:#22c55e;
+  border:none;border-radius:8px;cursor:pointer;margin-top:10px
+}
+
+input,textarea{
+  padding:10px;width:260px;border-radius:8px;
+  border:1px solid #d1d5db
+}
+
+.hidden{display:none}
+canvas{max-width:320px;margin-top:20px}
+</style>
+</head>
+
+<body>
+
+<div class="sidebar">
+  <h2>📘 StudyAlpha AI</h2>
+  <button onclick="show('dashboard')">Dashboard</button>
+  <button onclick="show('planner')">Planner</button>
+  <button onclick="show('test')">Test</button>
+  <button onclick="show('notes')">Notes</button>
+  <button onclick="show('bot')">Study Bot</button>
+  <button onclick="show('calendar')">Calendar</button>
+</div>
+
+<div class="content">
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="card">
+  <h2>Welcome 👋</h2>
+
+  <div class="grid">
+    <div class="stat">
+      <h3>Daily Goal (minutes)</h3>
+      <input id="goalInput" type="number" value="60">
+    </div>
+
+    <div class="stat">
+      <h3>Study Timer</h3>
+      <h2 id="timer">00:00</h2>
+      <button class="action" onclick="startTimer()">Start</button>
+      <button class="action" onclick="stopTimer()">Stop</button>
+      <button class="action" onclick="resetTimer()">Reset</button>
+    </div>
+
+    <div class="stat">
+      <p id="completedText">Completed: 0 min</p>
+      <p id="remainingText">Remaining: 60 min</p>
+    </div>
+  </div>
+
+  <canvas id="progressChart"></canvas>
+
+  <!-- AI STUDY RECOMMENDATION -->
+  <div class="stat" style="margin-top:20px">
+    <h3>🤖 AI Study Recommendation</h3>
+    <p id="aiSubject"><b>Recommended Subject:</b> --</p>
+    <p id="aiReason">Reason: --</p>
+  </div>
+</div>
+
+<!-- PLANNER -->
+<div id="planner" class="card hidden">
+  <h2>📚 Study Planner</h2>
+  <input id="subject" placeholder="SQL / OS / Network / DBMS / AI">
+  <button class="action" onclick="generatePlan()">Generate Plan</button>
+  <div id="planOutput"></div>
+</div>
+
+<!-- TEST -->
+<div id="test" class="card hidden">
+  <h2>📝 MCQ Test</h2>
+  <button class="action" onclick="loadQuiz()">Start Test</button>
+  <div id="quizArea"></div>
+</div>
+
+<!-- NOTES -->
+<div id="notes" class="card hidden">
+  <h2>🗒 Study Notes</h2>
+  <textarea id="noteText" rows="4" placeholder="Write important study point..."></textarea><br>
+  <button class="action" onclick="saveNote()">Save Note</button>
+  <div id="notesList"></div>
+</div>
+
+<!-- BOT -->
+<div id="bot" class="card hidden">
+  <h2>🤖 Study Bot</h2>
+  <input id="botInput" placeholder="Ask any CS topic">
+  <button class="action" onclick="botReply()">Ask</button>
+  <div id="botAnswer"></div>
+</div>
+
+<!-- CALENDAR -->
+<div id="calendar" class="card hidden">
+  <h2>📅 Study Calendar</h2>
+  <input id="calSubject" placeholder="Subject"><br><br>
+  <input type="date" id="calDate"><br><br>
+  <input type="time" id="calTime"><br><br>
+  <button class="action" onclick="saveCalendar()">Save</button>
+  <div id="calendarOutput"></div>
+</div>
+
+</div>
+
+<script>
+function show(id){
+  document.querySelectorAll('.card').forEach(c=>c.classList.add('hidden'));
+  document.getElementById(id).classList.remove('hidden');
+}
+
+/* TIMER */
+let seconds=0,interval=null;
+function startTimer(){
+  if(interval) return;
+  interval=setInterval(()=>{seconds++;updateTimer()},1000);
+}
+function stopTimer(){clearInterval(interval);interval=null}
+function resetTimer(){stopTimer();seconds=0;updateTimer()}
+function updateTimer(){
+  let m=Math.floor(seconds/60);
+  let s=seconds%60;
+  timer.innerText=`${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+  completedText.innerText="Completed: "+m+" min";
+  remainingText.innerText="Remaining: "+Math.max(goalInput.value-m,0)+" min";
+  chart.data.datasets[0].data=[m,goalInput.value-m];
+  chart.update();
+}
+
+/* CHART */
+let chart=new Chart(progressChart,{
+  type:'pie',
+  data:{labels:['Completed','Remaining'],
+  datasets:[{data:[0,60],backgroundColor:['#22c55e','#e5e7eb']}]}
+});
+
+/* AI STUDY RECOMMENDATION */
+function aiRecommendation(){
+  const subjects=[
+    {name:"SQL",studyTime:40,score:3},
+    {name:"Operating System",studyTime:25,score:2},
+    {name:"Network Security",studyTime:10,score:1},
+    {name:"AI",studyTime:30,score:4}
+  ];
+
+  let weak=subjects[0];
+  subjects.forEach(s=>{
+    if(s.studyTime<weak.studyTime && s.score<=weak.score){
+      weak=s;
+    }
+  });
+
+  aiSubject.innerHTML="<b>Recommended Subject:</b> "+weak.name;
+  aiReason.innerText="Reason: Less study time and low test performance";
+}
+aiRecommendation();
+
+/* PLANNER */
+function generatePlan(){
+  planOutput.innerHTML=`
+  <p><b>Definition:</b> Core explanation of the subject.</p>
+  <p><b>Important Topics:</b> Basics, Working, Examples</p>
+  <p><b>Levels:</b> Basic → Intermediate → Advanced</p>
+  <p><b>Exam Points:</b> Key points for writing answers</p>`;
+}
+
+/* TEST */
+const mcq=[
+{q:"What is SQL?",o:["OS","Query Language","Browser","Game"],a:1},
+{q:"Linux is?",o:["Paid","Open Source","Virus","Hardware"],a:1},
+{q:"Firewall is used for?",o:["Security","Gaming","Music","Storage"],a:0},
+{q:"SELECT command is used to?",o:["Delete","Insert","Fetch","Update"],a:2},
+{q:"AI stands for?",o:["Automation","Human","Artificial Intelligence","All"],a:2}
+];
+
+function loadQuiz(){
+  let html="";
+  mcq.forEach((x,i)=>{
+    html+=`<p>${i+1}. ${x.q}</p>`;
+    x.o.forEach((op,j)=>{
+      html+=`<label><input type="radio" name="q${i}" value="${j}"> ${op}</label><br>`;
+    });
+  });
+  html+=`<button class="action" onclick="submitQuiz()">Submit</button>`;
+  quizArea.innerHTML=html;
+}
+
+function submitQuiz(){
+  let score=0;
+  mcq.forEach((x,i)=>{
+    let ans=document.querySelector('input[name="q'+i+'"]:checked');
+    if(ans && Number(ans.value)===x.a) score++;
+  });
+  alert("Your Score: "+score+" / "+mcq.length);
+}
+
+/* NOTES */
+let notes=JSON.parse(localStorage.getItem("notes"))||[];
+function saveNote(){
+  if(noteText.value.trim()==="") return alert("Write something");
+  if(notes.length>=6) return alert("Note limit reached");
+
+  notes.push({text:noteText.value,time:new Date().toLocaleString()});
+  localStorage.setItem("notes",JSON.stringify(notes));
+  noteText.value="";
+  showNotes();
+}
+function showNotes(){
+  notesList.innerHTML="";
+  notes.forEach(n=>{
+    notesList.innerHTML+=`
+    <div class="stat">
+      <p>${n.text}</p>
+      <small>${n.time}</small>
+    </div>`;
+  });
+}
+showNotes();
+
+/* BOT */
+function botReply(){
+  let q=botInput.value.toLowerCase();
+  let ans="";
+  if(q.includes("sql")){
+    ans="<p>SQL is used to manage relational databases.</p><ul><li>CRUD operations</li><li>Data control</li></ul>";
+  }else if(q.includes("os")||q.includes("operating")){
+    ans="<p>Operating System manages hardware and software.</p><ul><li>Process management</li><li>Memory management</li></ul>";
+  }else if(q.includes("network")){
+    ans="<p>Computer networks enable communication.</p><ul><li>Protocols</li><li>Resource sharing</li></ul>";
+  }else if(q.includes("ai")){
+    ans="<p>AI enables machines to simulate intelligence.</p><ul><li>Learning</li><li>Automation</li></ul>";
+  }else{
+    ans="<p>This is a computer science topic.</p><ul><li>Refer syllabus</li><li>Use planner</li></ul>";
+  }
+  botAnswer.innerHTML=ans;
+}
+
+/* CALENDAR */
+function saveCalendar(){
+  calendarOutput.innerHTML=`<p>${calSubject.value} – ${calDate.value} ${calTime.value}</p>`;
+}
+</script>
+
+</body>
+</html>
